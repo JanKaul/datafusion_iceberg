@@ -61,8 +61,10 @@ mod tests {
 
     use datafusion::{
         arrow::{array, record_batch::RecordBatch},
+        dataframe::DataFrame,
         prelude::*,
     };
+    use tokio::task;
 
     use super::DataFusionCatalog;
 
@@ -102,14 +104,22 @@ mod tests {
 
         let datafusion_catalog = Arc::new(DataFusionCatalog::new(catalog));
 
-        let ctx = SessionContext::new();
+        let ctx = Arc::new(SessionContext::new());
 
         ctx.register_catalog("my_catalog", datafusion_catalog);
 
-        let df = ctx
-            .sql("SELECT date, SUM(cases) FROM my_catalog.dashbook.covid_nyt GROUP BY date")
-            .await
-            .expect("Failed to execute query.");
+        let arc_ctx = Arc::clone(&ctx);
+
+        let logical_plan = task::spawn_blocking(move || {
+            arc_ctx.create_logical_plan(
+                "SELECT county, SUM(cases) FROM my_catalog.dashbook.covid_nyt GROUP BY county",
+            )
+        })
+        .await
+        .unwrap()
+        .expect("Failed to create logical plan");
+
+        let df = DataFrame::new(Arc::clone(&ctx.state), &logical_plan);
 
         // execute the plan
         let results: Vec<RecordBatch> = df.collect().await.expect("Failed to execute query plan.");
@@ -122,10 +132,10 @@ mod tests {
         let cases = batch
             .column(1)
             .as_any()
-            .downcast_ref::<array::Int32Array>()
+            .downcast_ref::<array::Int64Array>()
             .expect("Failed to get values from batch.");
 
         // Value can either be 0.9 or 1.8
-        assert_eq!(cases.value(0), 400)
+        assert!(cases.value(0) > 100)
     }
 }

@@ -36,10 +36,9 @@ impl SchemaProvider for DataFusionSchema {
     fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let mut full_name = Vec::from(self.schema.levels().clone());
         full_name.push(name.to_owned());
-        let table = futures::executor::block_on(
-            Arc::clone(&self.catalog).load_table(TableIdentifier::try_new(&full_name).ok()?),
-        )
-        .ok()?;
+        let identifier = TableIdentifier::try_new(&full_name).ok()?;
+        let table =
+            futures::executor::block_on(Arc::clone(&self.catalog).load_table(identifier)).ok()?;
         Some(Arc::new(DataFusionTable::from(table)))
     }
     fn table_exist(&self, name: &str) -> bool {
