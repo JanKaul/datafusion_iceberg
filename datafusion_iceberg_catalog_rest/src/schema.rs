@@ -10,7 +10,7 @@ use iceberg_rs::{
     model::schema::{SchemaStruct, SchemaV2},
 };
 
-use datafusion_iceberg::DataFusionTable;
+use datafusion_iceberg::table::DataFusionTable;
 
 pub struct DataFusionSchema {
     schema: Namespace,

@@ -30,7 +30,7 @@ use iceberg_rs::{
     model::{bytes::bytes_to_any, manifest::ManifestEntry},
 };
 
-use super::DataFusionTable;
+use super::table::DataFusionTable;
 
 pub(crate) struct PruneManifests<'table>(&'table DataFusionTable);
 

@@ -1,6 +1,6 @@
 use datafusion::physical_plan::{ColumnStatistics, Statistics};
 
-use super::DataFusionTable;
+use super::table::DataFusionTable;
 use anyhow::Result;
 
 impl DataFusionTable {
