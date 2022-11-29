@@ -20,8 +20,8 @@ use datafusion::{
         datatypes::{DataType, Schema},
     },
     common::DataFusionError,
-    logical_plan::Column,
     physical_optimizer::pruning::PruningStatistics,
+    prelude::Column,
     scalar::ScalarValue,
 };
 

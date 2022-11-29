@@ -18,9 +18,10 @@ use datafusion::{
     },
     execution::context::SessionState,
     logical_expr::TableType,
-    logical_plan::{combine_filters, Expr},
+    optimizer::utils::conjunction,
     physical_optimizer::pruning::PruningPredicate,
     physical_plan::{file_format::FileScanConfig, ExecutionPlan},
+    prelude::Expr,
     scalar::ScalarValue,
 };
 use url::Url;
@@ -92,7 +93,9 @@ impl TableProvider for DataFusionTable {
         // This way data files with the same partition value are mapped to the same vector.
         let mut file_groups: HashMap<Vec<ScalarValue>, Vec<PartitionedFile>> = HashMap::new();
         // If there is a filter expression the manifests to read are pruned based on the pruning statistics available in the manifest_list file.
-        if let Some(Some(predicate)) = (!filters.is_empty()).then_some(combine_filters(filters)) {
+        if let Some(Some(predicate)) =
+            (!filters.is_empty()).then_some(conjunction(filters.iter().cloned()))
+        {
             let pruning_predicate = PruningPredicate::try_new(predicate, schema.clone())?;
             let manifests_to_prune = pruning_predicate.prune(&PruneManifests::from(self))?;
             let files = self
@@ -243,6 +246,7 @@ impl TableProvider for DataFusionTable {
             projection,
             limit,
             table_partition_cols,
+            config_options: Default::default(),
         };
         ParquetFormat::default()
             .create_physical_plan(file_scan_config, filters)
@@ -315,7 +319,7 @@ mod tests {
         ctx.register_table("nyc_taxis", table).unwrap();
 
         let df = ctx
-            .sql("SELECT vendor_id, trip_distance FROM nyc_taxis WHERE CAST(vendor_id AS INT) = 1")
+            .sql("SELECT vendor_id, trip_distance FROM nyc_taxis WHERE vendor_id = 1")
             .await
             .unwrap();
 
