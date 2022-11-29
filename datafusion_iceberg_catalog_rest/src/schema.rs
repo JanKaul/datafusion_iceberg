@@ -7,9 +7,10 @@ use datafusion::{
 };
 use iceberg_rs::{
     catalog::{namespace::Namespace, table_identifier::TableIdentifier, Catalog},
-    datafusion::DataFusionTable,
     model::schema::{SchemaStruct, SchemaV2},
 };
+
+use datafusion_iceberg::DataFusionTable;
 
 pub struct DataFusionSchema {
     schema: Namespace,

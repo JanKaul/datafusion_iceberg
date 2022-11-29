@@ -1,2 +1,2 @@
 [workspace]
-members = ["datafusion_iceberg_catalog_rest"]
+members = ["datafusion_iceberg", "datafusion_iceberg_catalog_rest"]
