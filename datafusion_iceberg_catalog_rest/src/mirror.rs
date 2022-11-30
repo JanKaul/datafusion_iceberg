@@ -3,11 +3,11 @@ use dashmap::DashMap;
 use datafusion::{datasource::TableProvider, error::DataFusionError};
 use datafusion_iceberg::DataFusionTable;
 use futures::{executor::LocalPool, task::LocalSpawnExt};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use iceberg_rs::catalog::{identifier::Identifier, namespace::Namespace, Catalog};
 
-type NamespaceNode = Vec<String>;
+type NamespaceNode = HashSet<String>;
 
 enum Node {
     Namespace(NamespaceNode),
@@ -28,7 +28,7 @@ impl Mirror {
             .await
             .map_err(|err| DataFusionError::Internal(format!("{}", err)))?;
         for namespace in namespaces {
-            let mut namespace_node = Vec::new();
+            let mut namespace_node = HashSet::new();
             let tables = catalog
                 .clone()
                 .list_tables(&namespace)
@@ -40,7 +40,7 @@ impl Mirror {
                     .load_table(&identifier)
                     .await
                     .map_err(|err| DataFusionError::Internal(format!("{}", err)))?;
-                namespace_node.push(identifier.to_string());
+                namespace_node.insert(identifier.to_string());
                 storage.insert(
                     identifier.to_string(),
                     Node::Relation(Arc::new(DataFusionTable::from(relation))),
@@ -116,7 +116,7 @@ impl Mirror {
             .value_mut()
         {
             Node::Namespace(namespace) => {
-                namespace.push(identifier.to_string());
+                namespace.insert(identifier.to_string());
             }
             Node::Relation(_) => {}
         };
@@ -139,6 +139,45 @@ impl Mirror {
                     .register_table(identifier, &metadata_location)
                     .await
                     .unwrap();
+            })
+            .map_err(|err| DataFusionError::Internal(format!("{}", err)))?;
+        Ok(Some(table))
+    }
+    pub fn deregister_table(
+        &self,
+        identifier: Identifier,
+    ) -> Result<Option<Arc<dyn TableProvider>>, DataFusionError> {
+        let table = if let (_, Node::Relation(relation)) = self
+            .storage
+            .remove(&identifier.to_string())
+            .ok_or(DataFusionError::Internal(
+                "Can't deregister table, tables doesn't exist.".to_string(),
+            ))? {
+            Ok(relation)
+        } else {
+            Err(DataFusionError::Internal(
+                "Can't deregister table, identifier refers to a namespace.".to_string(),
+            ))
+        }?;
+        match self
+            .storage
+            .get_mut(&identifier.namespace().to_string())
+            .ok_or(DataFusionError::Internal(
+                "Namespace doesn't exist".to_string(),
+            ))?
+            .value_mut()
+        {
+            Node::Namespace(namespace) => {
+                namespace.remove(&identifier.to_string());
+            }
+            Node::Relation(_) => {}
+        };
+        let pool = LocalPool::new();
+        let spawner = pool.spawner();
+        let cloned_catalog = self.catalog.clone();
+        spawner
+            .spawn_local(async move {
+                cloned_catalog.drop_table(&identifier).await.unwrap();
             })
             .map_err(|err| DataFusionError::Internal(format!("{}", err)))?;
         Ok(Some(table))

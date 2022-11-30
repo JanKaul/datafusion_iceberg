@@ -53,7 +53,11 @@ impl SchemaProvider for IcebergSchema {
             .map_err(|err| DataFusionError::Internal(err.to_string()))?;
         self.catalog.register_table(identifier, table)
     }
-    fn deregister_table(&self, _name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
-        Ok(None)
+    fn deregister_table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
+        let mut full_name = Vec::from(self.schema.levels().clone());
+        full_name.push(name.to_owned());
+        let identifier = Identifier::try_new(&full_name)
+            .map_err(|err| DataFusionError::Internal(err.to_string()))?;
+        self.catalog.deregister_table(identifier)
     }
 }
