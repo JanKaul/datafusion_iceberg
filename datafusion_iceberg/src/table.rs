@@ -30,7 +30,7 @@ use url::Url;
 use crate::pruning_statistics::{PruneDataFiles, PruneManifests};
 
 use iceberg_rs::{
-    arrow::schema::iceberg_to_arrow_schema, catalog::Relation,
+    arrow::schema::iceberg_to_arrow_schema, catalog::relation::Relation,
     model::view_metadata::Representation, table::Table, util, view::View,
 };
 // mod value;

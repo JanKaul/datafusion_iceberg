@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use datafusion::physical_plan::{ColumnStatistics, Statistics};
-use iceberg_rs::catalog::Relation;
+use iceberg_rs::catalog::relation::Relation;
 
 use super::table::DataFusionTable;
 use anyhow::Result;
