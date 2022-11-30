@@ -6,24 +6,26 @@ use datafusion::{
 };
 use iceberg_rs::catalog::{namespace::Namespace, Catalog};
 
-use crate::schema::DataFusionSchema;
+use crate::{mirror::Mirror, schema::IcebergSchema};
 
-pub struct DataFusionCatalog {
-    catalog: Arc<dyn Catalog>,
+pub struct IcebergCatalog {
+    catalog: Arc<Mirror>,
 }
 
-impl DataFusionCatalog {
-    pub fn new(catalog: Arc<dyn Catalog>) -> Self {
-        DataFusionCatalog { catalog }
+impl IcebergCatalog {
+    pub async fn new(catalog: Arc<dyn Catalog>) -> Result<Self> {
+        Ok(IcebergCatalog {
+            catalog: Arc::new(Mirror::new(catalog).await?),
+        })
     }
 }
 
-impl CatalogProvider for DataFusionCatalog {
+impl CatalogProvider for IcebergCatalog {
     fn as_any(&self) -> &dyn Any {
         self
     }
     fn schema_names(&self) -> Vec<String> {
-        let namespaces = futures::executor::block_on(self.catalog.list_namespaces(None));
+        let namespaces = self.catalog.schema_names(None);
         match namespaces {
             Err(_) => vec![],
             Ok(namespaces) => namespaces.into_iter().map(|x| x.to_string()).collect(),
@@ -32,7 +34,7 @@ impl CatalogProvider for DataFusionCatalog {
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
         let namespaces = self.schema_names();
         namespaces.iter().find(|x| *x == name).and_then(|y| {
-            Some(Arc::new(DataFusionSchema::new(
+            Some(Arc::new(IcebergSchema::new(
                 Namespace::try_new(&y.split(".").map(|z| z.to_owned()).collect::<Vec<String>>())
                     .ok()?,
                 Arc::clone(&self.catalog),
@@ -61,12 +63,10 @@ mod tests {
 
     use datafusion::{
         arrow::{array, record_batch::RecordBatch},
-        dataframe::DataFrame,
         prelude::*,
     };
-    use tokio::task;
 
-    use super::DataFusionCatalog;
+    use super::IcebergCatalog;
 
     fn configuration() -> Configuration {
         Configuration {
@@ -98,28 +98,23 @@ mod tests {
         let catalog: Arc<dyn Catalog> = Arc::new(RestCatalog::new(
             "my_catalog".to_owned(),
             configuration(),
-            "/".to_owned(),
             object_store,
         ));
 
-        let datafusion_catalog = Arc::new(DataFusionCatalog::new(catalog));
+        let datafusion_catalog = Arc::new(
+            IcebergCatalog::new(catalog)
+                .await
+                .expect("Failed to create iceberg catalog"),
+        );
 
-        let ctx = Arc::new(SessionContext::new());
+        let ctx = SessionContext::new();
 
         ctx.register_catalog("my_catalog", datafusion_catalog);
 
-        let arc_ctx = Arc::clone(&ctx);
-
-        let logical_plan = task::spawn_blocking(move || {
-            arc_ctx.create_logical_plan(
-                "SELECT county, SUM(cases) FROM my_catalog.dashbook.covid_nyt GROUP BY county",
-            )
-        })
-        .await
-        .unwrap()
-        .expect("Failed to create logical plan");
-
-        let df = DataFrame::new(Arc::clone(&ctx.state), &logical_plan);
+        let df = ctx
+            .sql("SELECT county, SUM(cases) FROM my_catalog.dashbook.covid_nyt GROUP BY county")
+            .await
+            .expect("Failed to create dataframe.");
 
         // execute the plan
         let results: Vec<RecordBatch> = df.collect().await.expect("Failed to execute query plan.");
